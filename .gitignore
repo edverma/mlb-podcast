@@ -1,0 +1,8 @@
+.env
+audio/
+data/
+scripts/
+logs/
+utils/__pycache__/
+venv/
+config/__pycache__/
