@@ -874,105 +874,15 @@ class GoogleWavenetTTS:
             logger.info("Using mock audio data (demo mode)")
             return b"MOCK_AUDIO_DATA"
         
-        # For SSML, preprocess to make it compatible with Google's TTS
-        if is_ssml:
-            # Regular cleanup for standard API
-            text_regular = self._prepare_ssml_for_google(text, for_long_audio_api=False)
-            
-            if self.long_audio_available:
-                logger.info("Processing SSML content using Long Audio API")
-                try:
-                    # Use special preparation for Long Audio API
-                    text_for_long_api = self._prepare_ssml_for_google(text, for_long_audio_api=True)
-                    return self._long_audio_synthesis(text_for_long_api, voice_name, is_ssml=True)
-                except Exception as e:
-                    logger.error(f"Error processing SSML with Long Audio API: {e}")
-                    logger.info("Falling back to standard API with SSML")
-            
-            # Use the regular prepared text for standard API or fallback
-            text = text_regular
-            
-            # If Long Audio API isn't available or fails, try standard API directly
-            # This will work only for short SSML (under 5000 bytes)
-            logger.info("Processing SSML content using standard API")
-            if len(text) <= self.max_char_limit:
-                try:
-                    return self._tts_request(text, voice_name, is_ssml=True)
-                except Exception as e:
-                    logger.error(f"Error processing SSML with standard API: {e}")
-                    raise
-            else:
-                logger.warning(f"SSML content is too long ({len(text)} bytes) for standard API")
-                logger.warning("Attempting basic SSML chunking (may affect speech quality)")
-                
-                try:
-                    # Basic SSML chunking - this is not perfect but should work for many cases
-                    chunks = self._chunk_ssml(text)
-                    logger.info(f"Split SSML into {len(chunks)} chunks")
-                    
-                    audio_chunks = []
-                    for i, chunk in enumerate(chunks):
-                        logger.info(f"Processing SSML chunk {i+1}/{len(chunks)}")
-                        chunk_audio = self._tts_request(chunk, voice_name, is_ssml=True)
-                        audio_chunks.append(chunk_audio)
-                    
-                    # Combine audio chunks
-                    return b''.join(audio_chunks)
-                    
-                except Exception as e:
-                    logger.error(f"Error processing chunked SSML: {e}")
-                    logger.error("To process long SSML properly, configure Long Audio API settings in .env")
-                    logger.error("For details, see docs/google_wavenet_setup.md")
-                    raise Exception("Could not process long SSML")
+        # For regular text, use Long Audio API
+        logger.info(f"Using Long Audio API")
+        try:
+            return self._long_audio_synthesis(text, voice_name, is_ssml=False)
+        except Exception as e:
+            logger.error(f"Error processing long text with Long Audio API: {e}")
+            # Fall back to chunking if Long Audio API fails
+            logger.info("Falling back to chunking method")
         
-        # For regular text, use Long Audio API if text is very long (>50K bytes) and available
-        if len(text) > 50000 and self.long_audio_available:
-            logger.info(f"Text is very long ({len(text)} bytes), using Long Audio API")
-            try:
-                return self._long_audio_synthesis(text, voice_name, is_ssml=False)
-            except Exception as e:
-                logger.error(f"Error processing long text with Long Audio API: {e}")
-                # Fall back to chunking if Long Audio API fails
-                logger.info("Falling back to chunking method")
-        
-        # For regular text using chunking approach
-        logger.info("Processing text using chunking approach")
-        # Split text by sentences to avoid cutting words
-        sentences = text.replace('\n', ' ').split('.')
-        chunks = []
-        current_chunk = ""
-        
-        for sentence in sentences:
-            # Add the period back except for the last empty sentence if the text ends with a period
-            if sentence:
-                sentence = sentence + '.'
-            
-            # If adding this sentence would exceed the limit, add the current chunk to chunks
-            # and start a new chunk
-            if len(current_chunk) + len(sentence) > self.max_char_limit:
-                chunks.append(current_chunk)
-                current_chunk = sentence
-            else:
-                current_chunk += sentence
-                
-        # Add the last chunk if it's not empty
-        if current_chunk:
-            chunks.append(current_chunk)
-        
-        # Process each chunk
-        audio_chunks = []
-        for i, chunk in enumerate(chunks):
-            logger.info(f"Processing chunk {i+1}/{len(chunks)} ({len(chunk)} chars)")
-            try:
-                audio_data = self._tts_request(chunk, voice_name, is_ssml=False)
-                audio_chunks.append(audio_data)
-            except Exception as e:
-                logger.error(f"Error processing chunk {i+1}: {e}")
-                raise
-        
-        # Combine the audio chunks (this is a simple concatenation and may have small gaps)
-        # For more advanced audio concatenation, consider using a library like pydub
-        return b''.join(audio_chunks)
     
     def generate_audio(self, script_text: str, voice_name: Optional[str] = None, is_ssml: bool = False) -> bytes:
         """Generate audio from script text, handling any length limitations.
@@ -983,21 +893,7 @@ class GoogleWavenetTTS:
             is_ssml: If True, the script_text is treated as SSML content
         """
         try:
-            # Check if this is SSML content
-            if is_ssml:
-                logger.info("Processing SSML content for audio generation")
-                return self._process_long_text(script_text, voice_name, is_ssml=True)
-            
-            # For regular text, process based on length
-            if len(script_text) <= self.max_char_limit:
-                logger.info(f"Text length ({len(script_text)} chars) within limit, processing directly")
-                return self._tts_request(script_text, voice_name, is_ssml=False)
-            
-            # For longer text, break it into chunks and process each chunk
-            else:
-                logger.info(f"Text length ({len(script_text)} chars) exceeds limit, processing in chunks")
-                return self._process_long_text(script_text, voice_name, is_ssml=False)
-        
+            return self._process_long_text(script_text, voice_name, is_ssml=False)
         except Exception as e:
             logger.error(f"Failed to generate audio: {e}")
             raise
@@ -1013,42 +909,16 @@ class GoogleWavenetTTS:
         date = date or datetime.date.today()
         date_str = date.strftime("%Y-%m-%d")
         
-        # First try to find an optimized SSML file (for Long Audio API)
-        optimized_ssml_path = os.path.join(SCRIPTS_DIR, team_code, f"{date_str}_optimized.ssml")
-        if os.path.exists(optimized_ssml_path) and self.long_audio_available:
-            try:
-                with open(optimized_ssml_path, "r") as f:
-                    script_text = f.read()
-                logger.info(f"Found optimized SSML script for Long Audio API: {optimized_ssml_path}")
-                return script_text, True
-            except Exception as e:
-                logger.warning(f"Error reading optimized SSML file: {e}")
-                # Continue to try regular SSML
-        
-        # Next try to find a regular SSML file
-        ssml_file_path = os.path.join(SCRIPTS_DIR, team_code, f"{date_str}.ssml")
+        # Find text file
+        text_file_path = os.path.join(SCRIPTS_DIR, team_code, f"{date_str}.txt")
         try:
-            with open(ssml_file_path, "r") as f:
+            with open(text_file_path, "r") as f:
                 script_text = f.read()
-            logger.info(f"Found SSML script: {ssml_file_path}")
-            
-            # If we have Long Audio API available, optimize the SSML on-the-fly
-            if self.long_audio_available:
-                script_text = self._prepare_ssml_for_google(script_text, for_long_audio_api=True)
-                logger.info("Optimized SSML for Long Audio API on-the-fly")
-                
-            return script_text, True
+            logger.info(f"Found text script: {text_file_path}")
+            return script_text, False
         except FileNotFoundError:
-            # Fall back to text file
-            text_file_path = os.path.join(SCRIPTS_DIR, team_code, f"{date_str}.txt")
-            try:
-                with open(text_file_path, "r") as f:
-                    script_text = f.read()
-                logger.info(f"Found text script: {text_file_path}")
-                return script_text, False
-            except FileNotFoundError:
-                logger.error(f"No script file found: Tried {optimized_ssml_path}, {ssml_file_path} and {text_file_path}")
-                return "", False
+            logger.error(f"No script file found: Tried {text_file_path}")
+            return "", False
     
     def generate_and_save_audio(self, team_code: str, date: Optional[datetime.date] = None) -> str:
         """Generate audio from script and save to file."""
