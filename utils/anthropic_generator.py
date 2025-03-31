@@ -247,13 +247,7 @@ class ScriptGenerator:
         except:
             formatted_date = date_str
             
-        prompt = f"""Generate a {PODCAST_LENGTH_MINUTES}-minute podcast script for the {team_name} for {formatted_date} as an SSML (Speech Synthesis Markup Language) document.
-
-The SSML document should be properly formatted with an XML declaration and speak root element. Use SSML tags to enhance the speech output, including:
-- <break> for pauses
-- <emphasis> for emphasized words
-- <prosody> for adjusting rate, pitch, or volume
-- <say-as> for controlling how numbers, dates, etc. are pronounced
+        prompt = f"""Generate a {PODCAST_LENGTH_MINUTES}-minute podcast script for the {team_name} for {formatted_date}.
 
 Include a brief intro and outro. The script should sound natural when read aloud and include enthusiasm and personality of a baseball fan and podcaster.
 
@@ -329,21 +323,6 @@ INSTRUCTIONS:
 7. The entire script should be readable in approximately {PODCAST_LENGTH_MINUTES} minutes.
 8. Use a conversational, enthusiastic tone as if you're speaking directly to baseball fans.
 9. Include specific references to players, scores, and stats where relevant.
-10. Use SSML markup to enhance the speech, such as:
-   - Add <break time="0.5s"/> between sections
-   - Use <emphasis level="moderate"> for important points
-   - Adjust speech rate with <prosody rate="slow"> for dramatic moments
-   - Format numbers properly with <say-as interpret-as="cardinal">
-   - Format team names properly with <sub alias="Yankees">NYY</sub> when using abbreviations
-
-CRITICAL: Make sure the SSML is valid and properly formatted for Google Cloud Text-to-Speech. Wrap everything in a simple <speak> root element like this:
-```
-<speak>
-    <!-- SSML content here -->
-</speak>
-```
-
-DO NOT include XML version declarations, namespace attributes, or schema references as these can cause issues with Google's Long Audio API. Use a minimal SSML format.
 """
         
         return prompt
