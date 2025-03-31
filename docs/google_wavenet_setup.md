@@ -28,7 +28,7 @@ This guide explains how to set up Google Cloud Text-to-Speech with Wavenet voice
    - Copy this key to use in your configuration
    - Optional but recommended: Click "Restrict Key" to limit its use to only the Text-to-Speech API
 
-5. **Create a Service Account** (required for Long Audio API):
+5. **Create a Service Account** (recommended for authentication):
    - Navigate to "IAM & Admin" > "Service Accounts"
    - Click "Create Service Account"
    - Enter a name (e.g., "mlb-podcast-tts")
@@ -43,6 +43,14 @@ This guide explains how to set up Google Cloud Text-to-Speech with Wavenet voice
    - Select "JSON" as the key type and click "Create"
    - The key file will be downloaded automatically - save it securely
    - Add the path to this file in your `.env` configuration
+   
+   **Important Notes on Service Account Authentication**:
+   - Service Account authentication is preferred over API key authentication for security
+   - Service Accounts provide better access controls and auditing
+   - The service account key file contains credentials and should be kept secure
+   - Never commit the service account key file to version control
+   - You can use both service account and API key in your configuration, but service account will be preferred
+   - For local development, place the key file outside of your project directory to avoid accidentally committing it
    
 6. **Enable the Cloud Storage API**:
    - Navigate to "APIs & Services" > "Library"
@@ -191,19 +199,72 @@ Speech Synthesis Markup Language (SSML) allows granular control over how text is
    <sub alias="Yankees">NYY</sub>  <!-- Replaces NYY with Yankees -->
    ```
 
+## Authentication Methods
+
+The application supports two authentication methods for Google Cloud services:
+
+### 1. Service Account Authentication (Recommended)
+
+Service account authentication uses a JSON key file to authenticate with Google Cloud services. This is the recommended method for enhanced security, especially for production environments.
+
+**Setup**:
+- Create a service account with appropriate roles (Text-to-Speech Admin, Storage Admin)
+- Download the service account key file (JSON format)
+- Add the path to this file in your `.env` configuration:
+  ```
+  GOOGLE_CLOUD_SERVICE_ACCOUNT_FILE=/path/to/your-service-account-key.json
+  ```
+
+**Benefits**:
+- More secure than API keys
+- Fine-grained access control
+- Full access to all Text-to-Speech features including Long Audio API
+- Better auditing and logging
+- Token-based authentication that refreshes automatically
+
+**How it works**:
+- When the application starts, it loads the service account credentials from the provided file
+- It uses the Google Cloud client libraries directly when possible
+- For REST API calls, it obtains and refreshes OAuth tokens automatically
+- Handles authentication for both Text-to-Speech and Storage services
+
+### 2. API Key Authentication (Fallback)
+
+API key authentication uses a simple key string for authentication. This is easier to set up but less secure and has more limitations.
+
+**Setup**:
+- Create an API key in the Google Cloud Console
+- Add it to your `.env` configuration:
+  ```
+  GOOGLE_CLOUD_API_KEY=your_api_key_here
+  ```
+
+**Limitations**:
+- Less secure (keys can be leaked more easily)
+- Limited access control options
+- May have more restrictive quotas
+- Manual key rotation required
+
+The application will automatically use service account authentication if available, and fall back to API key authentication if no service account is configured.
+
 ## Troubleshooting
 
 If you encounter issues:
 
-1. **API key issues**:
-   - Ensure your API key is valid and hasn't expired
-   - Check that the Text-to-Speech API is enabled for your project
-   - Verify that you've restricted the API key appropriately (if applicable)
+1. **Authentication issues**:
+   - For service account authentication:
+     - Ensure the service account file path is correct and the file exists
+     - Check that the service account has the required roles
+     - Verify the service account is in the same project as the APIs you're using
+   - For API key authentication:
+     - Ensure your API key is valid and hasn't expired
+     - Check that the Text-to-Speech API is enabled for your project
+     - Verify that you've restricted the API key appropriately (if applicable)
 
 2. **Long Audio API issues**:
    - Verify that your Google Cloud project ID is correct in your `.env` file
    - Check that the Cloud Storage bucket exists and is correctly configured
-   - Ensure your API key has permission to access the Long Audio API
+   - Ensure your service account or API key has permission to access the Long Audio API and Storage
 
 3. **SSML validation errors**:
    - Check that your SSML is valid XML with properly closed tags

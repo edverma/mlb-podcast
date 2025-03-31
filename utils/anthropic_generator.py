@@ -114,8 +114,7 @@ class ScriptGenerator:
             formatted_date = date_str
         
         # Build a simple mock script with SSML
-        script = f"""<?xml version="1.0"?>
-<speak version="1.1" xmlns="http://www.w3.org/2001/10/synthesis" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.w3.org/2001/10/synthesis http://www.w3.org/TR/speech-synthesis11/synthesis.xsd" xml:lang="en-US">
+        script = f"""<speak>
     <prosody rate="medium" pitch="medium">
         <emphasis level="strong">{team_name} Daily Update</emphasis> - <say-as interpret-as="date" format="mdy">{formatted_date}</say-as>
         <break time="1s"/>
@@ -337,13 +336,14 @@ INSTRUCTIONS:
    - Format numbers properly with <say-as interpret-as="cardinal">
    - Format team names properly with <sub alias="Yankees">NYY</sub> when using abbreviations
 
-CRITICAL: Make sure the SSML is valid and properly formatted. Start with an XML declaration and wrap everything in a <speak> root element like this:
+CRITICAL: Make sure the SSML is valid and properly formatted for Google Cloud Text-to-Speech. Wrap everything in a simple <speak> root element like this:
 ```
-<?xml version="1.0"?>
-<speak version="1.1" xmlns="http://www.w3.org/2001/10/synthesis" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.w3.org/2001/10/synthesis http://www.w3.org/TR/speech-synthesis11/synthesis.xsd" xml:lang="en-US">
+<speak>
     <!-- SSML content here -->
 </speak>
 ```
+
+DO NOT include XML version declarations, namespace attributes, or schema references as these can cause issues with Google's Long Audio API. Use a minimal SSML format.
 """
         
         return prompt
@@ -370,6 +370,97 @@ CRITICAL: Make sure the SSML is valid and properly formatted. Start with an XML 
             f.write(script)
             
         logger.info(f"Saved SSML script for {team_name} to {script_file_path}")
+        
+        # Create optimized version for Long Audio API
+        try:
+            # Helper function to optimize SSML for Long Audio API
+            def optimize_ssml_for_long_audio_api(ssml_text):
+                import re
+                
+                # Remove XML declaration if present
+                if "<?xml" in ssml_text:
+                    ssml_text = re.sub(r'<\?xml.*?\?>\s*', '', ssml_text)
+                
+                # Check for nested <speak> tags, which is a common issue
+                speak_count = len(re.findall(r'<speak[^>]*>', ssml_text))
+                
+                if speak_count > 1:
+                    logger.warning(f"Found {speak_count} <speak> tags in SSML. Fixing nested tags.")
+                    # Extract all content between any speak tags
+                    all_content = []
+                    for match in re.finditer(r'<speak[^>]*>(.*?)</speak>', ssml_text, re.DOTALL):
+                        all_content.append(match.group(1).strip())
+                    
+                    # Combine all content and wrap in a single speak tag
+                    core_content = " ".join(all_content)
+                    ssml_text = f"<speak>{core_content}</speak>"
+                elif speak_count == 1:
+                    # Just one speak tag, simplify it by removing attributes
+                    ssml_text = re.sub(r'<speak[^>]*>', '<speak>', ssml_text)
+                else:
+                    # No speak tags, add them
+                    ssml_text = f"<speak>{ssml_text}</speak>"
+                
+                # Fix percentage attributes to decimal values for prosody rate
+                for rate_match in re.finditer(r'rate="(\d+)%"', ssml_text):
+                    rate_value = int(rate_match.group(1))
+                    decimal_rate = rate_value / 100.0
+                    ssml_text = ssml_text.replace(rate_match.group(0), f'rate="{decimal_rate}"')
+                    
+                # Fix relative pitch and volume attributes
+                ssml_text = re.sub(r'pitch="\+\d+%"', 'pitch="high"', ssml_text)
+                ssml_text = re.sub(r'pitch="-\d+%"', 'pitch="low"', ssml_text)
+                ssml_text = re.sub(r'volume="\+\d+%"', 'volume="loud"', ssml_text)
+                    
+                # Fix any double spacing issues
+                ssml_text = re.sub(r'\s{2,}', ' ', ssml_text)
+                
+                # For Long Audio API, we need to ensure tags are properly balanced
+                # For complex tags like prosody, we remove them entirely to avoid imbalance
+                # Remove the <speak> tags temporarily
+                content = re.sub(r'</?speak[^>]*>', '', ssml_text)
+                
+                # First, handle nested tags - remove all prosody tags since Google often rejects them in Long Audio API
+                # This is a simple approach - a more complex approach would be to balance them properly
+                content = re.sub(r'<prosody[^>]*>', '', content)
+                content = re.sub(r'</prosody>', '', content)
+                
+                # Now wrap in speak tags again
+                ssml_text = f"<speak>{content}</speak>"
+                
+                # Final validation check - make sure we only have one pair of speak tags
+                open_tags = len(re.findall(r'<speak[^>]*>', ssml_text))
+                close_tags = len(re.findall(r'</speak>', ssml_text))
+                
+                if open_tags != 1 or close_tags != 1:
+                    logger.warning(f"After processing, SSML still has {open_tags} opening and {close_tags} closing speak tags. Fixing...")
+                    # Extract all content without speak tags
+                    content = re.sub(r'</?speak[^>]*>', '', ssml_text)
+                    # Wrap in a single pair of speak tags
+                    ssml_text = f"<speak>{content}</speak>"
+                
+                # Double check for any remaining unclosed prosody tags
+                if "<prosody" in ssml_text and "</prosody>" not in ssml_text:
+                    logger.warning("Found unclosed prosody tag. Removing all prosody tags.")
+                    # Extract content inside speak tags
+                    match = re.search(r'<speak[^>]*>(.*?)</speak>', ssml_text, re.DOTALL)
+                    if match:
+                        content = match.group(1)
+                        # Remove prosody tags
+                        content = re.sub(r'<prosody[^>]*>', '', content)
+                        content = re.sub(r'</prosody>', '', content)
+                        ssml_text = f"<speak>{content}</speak>"
+                
+                return ssml_text
+                
+            optimized_ssml = optimize_ssml_for_long_audio_api(script)
+            optimized_file_path = os.path.join(team_script_dir, f"{date_str}_optimized.ssml")
+            with open(optimized_file_path, "w") as f:
+                f.write(optimized_ssml)
+                
+            logger.info(f"Saved optimized SSML for Long Audio API to {optimized_file_path}")
+        except Exception as e:
+            logger.warning(f"Failed to create optimized SSML version: {e}")
         
         # Also save a plain text version for podbean description
         plain_text_path = os.path.join(team_script_dir, f"{date_str}.txt")

@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<speak xmlns="http://www.w3.org/2001/10/synthesis" version="1.0">
+    <prosody rate="95%" pitch="+5%">
+        <speak xmlns="http://www.w3.org/2001/10/synthesis">
+            <emphasis level="strong">Nested content with improper formatting</emphasis>
+            <break time="0.5s"/>
+            <prosody volume="+10%">This has problematic attributes</prosody>
+        </speak>
+    </prosody>
+</speak>

@@ -42,6 +42,93 @@ class PodcastProcessor:
         self.script_generator = ScriptGenerator()
         self.tts = GoogleWavenetTTS()
         self.distributor = PodbeanDistributor()
+        
+    @staticmethod
+    def fix_ssml_for_long_audio_api(ssml_text: str) -> str:
+        """Fix real-world SSML to make it compatible with the Long Audio API.
+        
+        This function creates a simplified version of SSML that conforms to the 
+        strict requirements of Google's Long Audio API.
+        """
+        import re
+        from utils.logger import get_logger
+        logger = get_logger(__name__)
+        
+        # Remove XML declaration if present
+        if "<?xml" in ssml_text:
+            ssml_text = re.sub(r'<\?xml.*?\?>\s*', '', ssml_text)
+        
+        # Check for nested <speak> tags, which is a common issue
+        speak_count = len(re.findall(r'<speak[^>]*>', ssml_text))
+        
+        if speak_count > 1:
+            logger.warning(f"Found {speak_count} <speak> tags in SSML. Fixing nested tags.")
+            # Extract all content between any speak tags
+            all_content = []
+            for match in re.finditer(r'<speak[^>]*>(.*?)</speak>', ssml_text, re.DOTALL):
+                all_content.append(match.group(1).strip())
+            
+            # Combine all content and wrap in a single speak tag
+            core_content = " ".join(all_content)
+            ssml_text = f"<speak>{core_content}</speak>"
+        elif speak_count == 1:
+            # Just one speak tag, simplify it by removing attributes
+            ssml_text = re.sub(r'<speak[^>]*>', '<speak>', ssml_text)
+        else:
+            # No speak tags, add them
+            ssml_text = f"<speak>{ssml_text}</speak>"
+        
+        # Fix percentage attributes to decimal values for prosody rate
+        for rate_match in re.finditer(r'rate="(\d+)%"', ssml_text):
+            rate_value = int(rate_match.group(1))
+            decimal_rate = rate_value / 100.0
+            ssml_text = ssml_text.replace(rate_match.group(0), f'rate="{decimal_rate}"')
+            
+        # Fix relative pitch and volume attributes
+        ssml_text = re.sub(r'pitch="\+\d+%"', 'pitch="high"', ssml_text)
+        ssml_text = re.sub(r'pitch="-\d+%"', 'pitch="low"', ssml_text)
+        ssml_text = re.sub(r'volume="\+\d+%"', 'volume="loud"', ssml_text)
+            
+        # Fix any double spacing issues
+        ssml_text = re.sub(r'\s{2,}', ' ', ssml_text)
+        
+        # For Long Audio API, we need to ensure tags are properly balanced
+        # For complex tags like prosody, we remove them entirely to avoid imbalance
+        # Remove the <speak> tags temporarily
+        content = re.sub(r'</?speak[^>]*>', '', ssml_text)
+        
+        # First, handle nested tags - remove all prosody tags since Google often rejects them in Long Audio API
+        # This is a simple approach - a more complex approach would be to balance them properly
+        content = re.sub(r'<prosody[^>]*>', '', content)
+        content = re.sub(r'</prosody>', '', content)
+        
+        # Now wrap in speak tags again
+        ssml_text = f"<speak>{content}</speak>"
+        
+        # Final validation check - make sure we only have one pair of speak tags
+        open_tags = len(re.findall(r'<speak[^>]*>', ssml_text))
+        close_tags = len(re.findall(r'</speak>', ssml_text))
+        
+        if open_tags != 1 or close_tags != 1:
+            logger.warning(f"After processing, SSML still has {open_tags} opening and {close_tags} closing speak tags. Fixing...")
+            # Extract all content without speak tags
+            content = re.sub(r'</?speak[^>]*>', '', ssml_text)
+            # Wrap in a single pair of speak tags
+            ssml_text = f"<speak>{content}</speak>"
+            
+        # Double check for any remaining unclosed prosody tags
+        if "<prosody" in ssml_text and "</prosody>" not in ssml_text:
+            logger.warning("Found unclosed prosody tag. Removing all prosody tags.")
+            # Extract content inside speak tags
+            match = re.search(r'<speak[^>]*>(.*?)</speak>', ssml_text, re.DOTALL)
+            if match:
+                content = match.group(1)
+                # Remove prosody tags
+                content = re.sub(r'<prosody[^>]*>', '', content)
+                content = re.sub(r'</prosody>', '', content)
+                ssml_text = f"<speak>{content}</speak>"
+        
+        return ssml_text
     
     def process_team(self, team_code: str, date: Optional[datetime.date] = None, distribute: bool = True) -> TeamPodcastResult:
         """Process a single team's podcast."""

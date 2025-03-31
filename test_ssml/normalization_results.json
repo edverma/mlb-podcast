@@ -1,0 +1,59 @@
+{
+  "nested_speak.ssml": {
+    "original": {
+      "speak_tags": 2,
+      "close_tags": 2,
+      "content": "<?xml version=\"1.0\"?>\n<speak>\n    <prosody rate=\"medium\" pitch=\"medium\">\n        <speak>This is a ne..."
+    },
+    "tts_normalized": {
+      "speak_tags": 1,
+      "close_tags": 1,
+      "content": "<speak><prosody rate=\"medium\" pitch=\"medium\"> This is a nested speak tag that should be fixed</speak...",
+      "fixed": true
+    },
+    "processor_normalized": {
+      "speak_tags": 1,
+      "close_tags": 1,
+      "content": "<speak><prosody rate=\"medium\" pitch=\"medium\"> This is a nested speak tag that should be fixed</speak...",
+      "fixed": true
+    }
+  },
+  "multiple_speak.ssml": {
+    "original": {
+      "speak_tags": 2,
+      "close_tags": 2,
+      "content": "<speak>This is the first speak tag</speak>\n<speak>This is the second speak tag that should be combin..."
+    },
+    "tts_normalized": {
+      "speak_tags": 1,
+      "close_tags": 1,
+      "content": "<speak>This is the first speak tag This is the second speak tag that should be combined with the fir...",
+      "fixed": true
+    },
+    "processor_normalized": {
+      "speak_tags": 1,
+      "close_tags": 1,
+      "content": "<speak>This is the first speak tag This is the second speak tag that should be combined with the fir...",
+      "fixed": true
+    }
+  },
+  "complex_nested.ssml": {
+    "original": {
+      "speak_tags": 2,
+      "close_tags": 2,
+      "content": "<?xml version=\"1.0\"?>\n<speak xmlns=\"http://www.w3.org/2001/10/synthesis\" version=\"1.0\">\n    <prosody..."
+    },
+    "tts_normalized": {
+      "speak_tags": 1,
+      "close_tags": 1,
+      "content": "<speak><prosody rate=\"0.95\" pitch=\"high\">  <emphasis level=\"strong\">Nested content with improper for...",
+      "fixed": true
+    },
+    "processor_normalized": {
+      "speak_tags": 1,
+      "close_tags": 1,
+      "content": "<speak><prosody rate=\"0.95\" pitch=\"high\">  <emphasis level=\"strong\">Nested content with improper for...",
+      "fixed": true
+    }
+  }
+}

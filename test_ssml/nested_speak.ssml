@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<speak>
+    <prosody rate="medium" pitch="medium">
+        <speak>This is a nested speak tag that should be fixed</speak>
+        <break time="1s"/>
+        This content should be preserved
+    </prosody>
+</speak>
