@@ -9,7 +9,8 @@ from utils.logger import get_logger
 from utils.mlb_api import MLBDataFetcher
 from utils.perplexity_api import PerplexityNewsFetcher
 from utils.anthropic_generator import ScriptGenerator
-from utils.elevenlabs_tts import ElevenLabsTTS
+from utils.google_wavenet_tts import GoogleWavenetTTS
+from utils.podbean_distributor import PodbeanDistributor
 
 logger = get_logger(__name__)
 
@@ -22,6 +23,8 @@ class TeamPodcastResult(BaseModel):
     news_file: Optional[str] = None
     script_file: Optional[str] = None
     audio_file: Optional[str] = None
+    podbean_url: Optional[str] = None
+    distribution_success: bool = False
     success: bool = False
     error: Optional[str] = None
     
@@ -37,9 +40,10 @@ class PodcastProcessor:
         self.mlb_data = MLBDataFetcher()
         self.perplexity_api = PerplexityNewsFetcher()
         self.script_generator = ScriptGenerator()
-        self.tts = ElevenLabsTTS()
+        self.tts = GoogleWavenetTTS()
+        self.distributor = PodbeanDistributor()
     
-    def process_team(self, team_code: str, date: Optional[datetime.date] = None) -> TeamPodcastResult:
+    def process_team(self, team_code: str, date: Optional[datetime.date] = None, distribute: bool = True) -> TeamPodcastResult:
         """Process a single team's podcast."""
         date = date or datetime.date.today()
         date_str = date.strftime("%Y-%m-%d")
@@ -80,6 +84,39 @@ class PodcastProcessor:
             if audio_file:
                 result.audio_file = audio_file
                 result.success = True
+                
+                # Step 5: Distribute to Podbean
+                if result.success and result.audio_file and distribute:
+                    logger.info(f"Distributing podcast for {team_name} to Podbean")
+                    
+                    # Load script content for episode description
+                    script_content = ""
+                    if os.path.exists(result.script_file):
+                        with open(result.script_file, 'r') as f:
+                            script_content = f.read()
+                    
+                    # Prepare metadata for Podbean
+                    metadata = {
+                        "title": f"{team_name} Daily Update - {date_str}",
+                        "description": script_content[:1000] if script_content else f"Daily update for {team_name}",
+                        "tags": ["MLB", "baseball", "sports", team_code, team_name],
+                        "category": "Sports & Recreation"
+                    }
+                    
+                    # Distribute the podcast
+                    distribution_success, podbean_url = self.distributor.distribute_podcast(
+                        result.audio_file, metadata
+                    )
+                    
+                    if distribution_success and podbean_url:
+                        result.podbean_url = podbean_url
+                        result.distribution_success = True
+                        logger.info(f"Successfully distributed {team_name} podcast to Podbean: {podbean_url}")
+                    else:
+                        logger.error(f"Failed to distribute {team_name} podcast to Podbean")
+                elif result.success and not distribute:
+                    logger.info(f"Skipping Podbean distribution for {team_name} (--no-distribute flag set)")
+                
             else:
                 result.error = "Failed to generate audio file"
                 
@@ -90,7 +127,7 @@ class PodcastProcessor:
             
         return result
     
-    def process_all_teams(self, date: Optional[datetime.date] = None, max_workers: int = 5) -> List[TeamPodcastResult]:
+    def process_all_teams(self, date: Optional[datetime.date] = None, max_workers: int = 5, distribute: bool = True) -> List[TeamPodcastResult]:
         """Process podcasts for all MLB teams using parallel processing."""
         date = date or datetime.date.today()
         logger.info(f"Starting batch processing for all teams on {date.strftime('%Y-%m-%d')}")
@@ -100,7 +137,7 @@ class PodcastProcessor:
         # Process teams in parallel
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_to_team = {
-                executor.submit(self.process_team, team_code, date): team_code 
+                executor.submit(self.process_team, team_code, date, distribute): team_code 
                 for team_code in MLB_TEAMS.keys()
             }
             
@@ -109,7 +146,14 @@ class PodcastProcessor:
                 try:
                     result = future.result()
                     results.append(result)
-                    logger.info(f"Completed processing for {MLB_TEAMS.get(team_code)}: {'Success' if result.success else 'Failed'}")
+                    status = "Success"
+                    if not result.success:
+                        status = "Failed"
+                    elif not result.distribution_success and distribute:
+                        status = "Generated but not distributed"
+                    elif not distribute:
+                        status = "Generated (distribution skipped)"
+                    logger.info(f"Completed processing for {MLB_TEAMS.get(team_code)}: {status}")
                 except Exception as e:
                     logger.error(f"Error in thread for {MLB_TEAMS.get(team_code)}: {str(e)}")
                     results.append(TeamPodcastResult(
@@ -122,6 +166,11 @@ class PodcastProcessor:
         
         # Log summary
         success_count = sum(1 for result in results if result.success)
-        logger.info(f"Batch processing complete: {success_count}/{len(MLB_TEAMS)} teams successful")
+        distributed_count = sum(1 for result in results if result.distribution_success)
+        
+        if distribute:
+            logger.info(f"Batch processing complete: {success_count}/{len(MLB_TEAMS)} teams generated, {distributed_count}/{len(MLB_TEAMS)} distributed")
+        else:
+            logger.info(f"Batch processing complete: {success_count}/{len(MLB_TEAMS)} teams generated (distribution skipped)")
         
         return results

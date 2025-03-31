@@ -8,7 +8,9 @@ load_dotenv()
 MLB_API_KEY = os.getenv("MLB_API_KEY", "")
 PERPLEXITY_API_KEY = os.getenv("PERPLEXITY_API_KEY", "")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
-ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
+# Removed Unreal Speech API key
+# Added Google Cloud API key
+GOOGLE_CLOUD_API_KEY = os.getenv("GOOGLE_CLOUD_API_KEY", "")
 
 # MLB API Settings
 MLB_API_BASE_URL = "https://statsapi.mlb.com/api/v1"
@@ -20,9 +22,13 @@ NEWS_ARTICLES_COUNT = 5
 # Anthropic API Settings
 ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-3-sonnet-20240229")
 
-# ElevenLabs API Settings
-ELEVENLABS_API_BASE_URL = "https://api.elevenlabs.io/v1"
-ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")  # Default to "Rachel" voice
+# Google Wavenet Settings
+GOOGLE_WAVENET_VOICE = os.getenv("GOOGLE_WAVENET_VOICE", "en-US-Wavenet-C")
+GOOGLE_WAVENET_LANGUAGE_CODE = os.getenv("GOOGLE_WAVENET_LANGUAGE_CODE", "en-US")
+GOOGLE_CLOUD_PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT_ID", "")
+GOOGLE_CLOUD_LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
+GOOGLE_CLOUD_BUCKET = os.getenv("GOOGLE_CLOUD_BUCKET", "")
+GOOGLE_CLOUD_SERVICE_ACCOUNT_FILE = os.getenv("GOOGLE_CLOUD_SERVICE_ACCOUNT_FILE", "")
 
 # Podcast Settings
 PODCAST_LENGTH_MINUTES = 5

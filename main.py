@@ -44,6 +44,7 @@ def main():
     parser.add_argument("--date", type=str, help="Date to process (YYYY-MM-DD)")
     parser.add_argument("--all", action="store_true", help="Process all teams")
     parser.add_argument("--schedule", action="store_true", help="Run as a scheduled service")
+    parser.add_argument("--no-distribute", action="store_true", help="Skip Podbean distribution")
     
     args = parser.parse_args()
     
@@ -54,6 +55,9 @@ def main():
     
     processor = PodcastProcessor()
     
+    # Determine whether to distribute
+    distribute = not args.no_distribute
+    
     if args.schedule:
         # Run as a scheduled service
         logger.info("Starting scheduled service...")
@@ -63,18 +67,37 @@ def main():
         # Process all teams
         date = validate_date(args.date)
         logger.info(f"Processing all teams for {date.strftime('%Y-%m-%d')}...")
-        results = processor.process_all_teams(date=date)
+        
+        # Add distribute parameter
+        results = processor.process_all_teams(date=date, distribute=distribute)
         
         # Print summary
         success_count = sum(1 for result in results if result.success)
-        print(f"\nProcessed {len(results)} teams: {success_count} successful, {len(results) - success_count} failed")
+        distribution_count = sum(1 for result in results if result.distribution_success)
+        
+        print(f"\nProcessed {len(results)} teams:")
+        print(f"  {success_count} successfully generated")
+        
+        if distribute:
+            print(f"  {distribution_count} successfully distributed to Podbean")
+            
+            # Print distributed URLs
+            if distribution_count > 0:
+                print("\nDistributed podcasts:")
+                for result in results:
+                    if result.distribution_success and result.podbean_url:
+                        print(f"  {result.team_name}: {result.podbean_url}")
+        else:
+            print("  Distribution to Podbean skipped (--no-distribute flag set)")
     elif args.team:
         # Process a single team
         team_code = validate_team(args.team.upper())
         date = validate_date(args.date)
         
         logger.info(f"Processing {MLB_TEAMS[team_code]} for {date.strftime('%Y-%m-%d')}...")
-        result = processor.process_team(team_code, date)
+        
+        # Add distribute parameter
+        result = processor.process_team(team_code, date, distribute=distribute)
         
         # Print result
         if result.success:
@@ -83,6 +106,14 @@ def main():
             print(f"  News file: {result.news_file}")
             print(f"  Script file: {result.script_file}")
             print(f"  Audio file: {result.audio_file}")
+            
+            if distribute:
+                if result.distribution_success:
+                    print(f"  Podbean URL: {result.podbean_url}")
+                elif result.audio_file:
+                    print(f"  Podbean distribution: Failed")
+            else:
+                print(f"  Podbean distribution: Skipped (--no-distribute flag set)")
         else:
             print(f"\nFailed to process {result.team_name}: {result.error}")
     else:

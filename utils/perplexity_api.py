@@ -35,7 +35,7 @@ class PerplexityNewsFetcher:
         }
         
         payload = {
-            "model": "sonar-deep-research",
+            "model": "sonar-reasoning-pro",
             "messages": [
                 {
                     "role": "system",
